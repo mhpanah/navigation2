@@ -24,9 +24,13 @@ from rclpy.qos import qos_profile_sensor_data
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.parameter import Parameter
 
+
 from std_srvs.srv import Empty
 from gazebo_msgs.srv import GetEntityState, SetEntityState
 
+import os
+import subprocess
+import signal
 
 class GazeboInterface(Env):
     def __init__(self):
@@ -46,7 +50,12 @@ class GazeboInterface(Env):
         self.t.start()
         self.time_factor = 1.0
         self.time_to_sample = 1.0
-
+        self.count = 0
+        self.gazebo_started = False
+        self.gazebo_process = subprocess.Popen(['gazebo', '-s', 'libgazebo_ros_init.so',
+        '/home/mohammad/OTC_workDir/navigation2/nav2_system_tests/worlds/turtlebot3_ros2_demo.world'])
+        self.gazebo_started = True
+        
     def get_robot_pose(self):
         """Gets the robot pose with respect to the world
 
@@ -87,19 +96,50 @@ class GazeboInterface(Env):
     def pause_gazebo_world(self):
         while not self.pause_proxy.wait_for_service(timeout_sec=1.0 / self.time_factor):
             print('Pause Environment service is not available...')
+            self.count += 1
+            if self.count > 5:
+                self.restart_gazebo()
+                self.count = 0
+        self.count = 0
         self.pause_proxy.call_async(Empty.Request())
 
     def unpause_gazebo_world(self):
         while not self.unpause_proxy.wait_for_service(timeout_sec=1.0 / self.time_factor):
             print('Unpause Environment service is not available...')
+            self.count += 1
+            if self.count > 5:
+                self.restart_gazebo()
+                self.count = 0
+        self.count = 0
         self.unpause_proxy.call_async(Empty.Request())
 
     def reset_gazebo_world(self):
         while not self.reset_world.wait_for_service(timeout_sec=1.0):
             print('Reset world service is not available...')
+            self.count += 1
+            if self.count > 5:
+                self.restart_gazebo()
+                self.count = 0
+        self.count = 0
         self.reset_world.call_async(Empty.Request())
 
     def reset_gazebo_simulation(self):
         while not self.reset_simulation.wait_for_service(timeout_sec=1.0):
             print('Reset simulation service is not available...')
+            self.count += 1
+            if self.count > 5:
+                self.restart_gazebo()
+                self.count = 0
+        self.count = 0
         self.reset_simulation.call_async(Empty.Request())
+
+    def restart_gazebo(self):
+        self.kill_gazebo()
+        self.gazebo_process = subprocess.Popen(['gazebo', '-s', 'libgazebo_ros_init.so',
+        '/home/mohammad/OTC_workDir/navigation2/nav2_system_tests/worlds/turtlebot3_ros2_demo.world'])
+        print(self.gazebo_process.pid)
+        self.gazebo_started == True
+    
+    def kill_gazebo(self):
+        os.kill(self.gazebo_process.pid, signal.SIGKILL)
+        self.gazebo_started == False

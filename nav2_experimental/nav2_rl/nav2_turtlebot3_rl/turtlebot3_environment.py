@@ -75,7 +75,6 @@ class Turtlebot3Environment(GazeboInterface):
 
     def check_collision(self):
         if min(self.states_input) < self.range_min + self.collision_tol:
-            print("Colistion proximity... " + str(min(self.laser_scan_range)))
             return True
         return False
 
@@ -94,6 +93,11 @@ class Turtlebot3Environment(GazeboInterface):
     def get_robot_pose(self):
         while not self.get_entity_state.wait_for_service(timeout_sec=1.0):
             print('get entity state service is not available...')
+            self.count += 1
+            if self.count > 5:
+                self.restart_gazebo()
+                self.count = 0
+        self.count = 0
         req = GetEntityState.Request()
         req.name = 'turtlebot3_waffle'
         future = self.get_entity_state.call_async(req)
@@ -108,6 +112,7 @@ class Turtlebot3Environment(GazeboInterface):
         self.unpause_gazebo_world()
         self.stop_action()
         self.reset_gazebo_world()
+        #self.reset_gazebo_simulation()
 
         self.time_factor = self.get_time_factor()
         self.scan_msg_received = False
