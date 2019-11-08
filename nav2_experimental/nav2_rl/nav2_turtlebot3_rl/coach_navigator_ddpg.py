@@ -82,11 +82,10 @@ class NavigatorDDPG():
 
         # Graph Scheduling
         schedule_params = ScheduleParameters()
-        schedule_params.improve_steps = TrainingSteps(1000000000)
-        # how many episodes to train before calling evaluation
-        schedule_params.steps_between_evaluation_periods = EnvironmentEpisodes(100)
-        schedule_params.evaluation_steps = EnvironmentEpisodes(2)  # how many times to evaluate
-        schedule_params.heatup_steps = EnvironmentSteps(10000)  # how many episodes to heatup
+        schedule_params.improve_steps = TrainingSteps(400)
+        schedule_params.steps_between_evaluation_periods = EnvironmentEpisodes(5)
+        schedule_params.evaluation_steps = EnvironmentEpisodes(1)  # how many times to evaluate
+        schedule_params.heatup_steps = EnvironmentSteps(1000)  # how many steps to heatup
 
         # Agent
         agent_params = DDPGAgentParameters()
@@ -122,17 +121,22 @@ class NavigatorDDPG():
         self.my_checkpoint_dir = resources_path + '/checkpoints'
 
     def train_model(self):
-        # Checkpoints
         task_parameters1 = TaskParameters()
         task_parameters1.checkpoint_save_dir = self.my_checkpoint_dir
-        task_parameters1.checkpoint_save_secs = 1800 #3600
+        task_parameters1.checkpoint_save_secs = 600 # Seconds
+        # task_parameters1.checkpoint_restore_path = self.my_checkpoint_dir
         self.graph_manager.create_graph(task_parameters1)
+
+        # Heatup
+        for _ in range(10):
+           self.graph_manager.heatup(EnvironmentSteps(100))
 
         # Train
         self.graph_manager.heatup(EnvironmentSteps(5))
         for episode in range(40000):
-            self.graph_manager.train_and_act(EnvironmentSteps(400))
-            print("Training episode:{}".format(episode))
+            self.graph_manager.train_and_act(EnvironmentSteps(100))
+            self.graph_manager.heatup(EnvironmentSteps(100))
+            print("Training episode...:{}".format(episode))
 
     def load_model(self):
         task_parameters2 = TaskParameters()

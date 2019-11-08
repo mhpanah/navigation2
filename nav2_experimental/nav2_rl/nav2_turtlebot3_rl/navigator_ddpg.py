@@ -23,6 +23,7 @@ import numpy as np
 import gym
 from gym import spaces
 
+from keras.models import load_model
 from keras.models import Sequential, Model
 from keras.layers import Dense, Activation, Flatten, Input, Concatenate
 from keras.optimizers import Adam
@@ -68,19 +69,16 @@ class NavigatorDDPG():
     def build_model(self, env):
 
         nb_actions = env.action_space_size()
-        actor = Sequential()
-
+        self.actor = Sequential()
         # Actor Model
-        actor.add(Flatten(input_shape=(1,) + (self.observation_space_size,)))
-        actor.add(Dense(32))
-        actor.add(Activation('relu'))
-        actor.add(Dense(32))
-        actor.add(Activation('relu'))
-        actor.add(Dense(32))
-        actor.add(Activation('relu'))
-        actor.add(Dense(nb_actions))
-        actor.add(Activation('tanh'))
-        print(actor.summary())
+        self.actor.add(Flatten(input_shape=(1,) + (self.observation_space_size,)))
+        self.actor.add(Dense(400))
+        self.actor.add(Activation('relu'))
+        self.actor.add(Dense(300))
+        self.actor.add(Activation('relu'))
+        self.actor.add(Dense(nb_actions))
+        self.actor.add(Activation('tanh'))
+        print(self.actor.summary())
 
         # Critic Model
         action_input = Input(shape=(nb_actions,), name='action_input')
@@ -96,31 +94,35 @@ class NavigatorDDPG():
         x = Activation('relu')(x)
         x = Dense(1)(x)
         x = Activation('linear')(x)
-        critic = Model(inputs=[action_input, observation_input], outputs=x)
-        print(critic.summary())
+        self.critic = Model(inputs=[action_input, observation_input], outputs=x)
+        print(self.critic.summary())
 
         memory = SequentialMemory(limit=400000, window_length=1)
         random_process = OrnsteinUhlenbeckProcess(size=nb_actions, theta=.15, mu=0., sigma=.3)
 
         # Build Agent
         self.agent = DDPGAgent(nb_actions=nb_actions,
-                               actor=actor,
-                               critic=critic,
+                               actor=self.actor, critic=self.critic,
                                critic_action_input=action_input,
                                memory=memory,
-                               nb_steps_warmup_critic=100,
-                               nb_steps_warmup_actor=100,
+                               nb_steps_warmup_critic=10000,
+                               nb_steps_warmup_actor=10000,
                                random_process=random_process,
                                gamma=.99,
                                target_model_update=100,
                                processor=TB3Processor())
-
-        self.agent.compile(Adam(lr=.001, clipnorm=1.), metrics=['mae'])
+        
+        self.agent.compile([Adam(lr=1e-4), Adam(lr=1e-3)], metrics=['mae'])
+        # self.agent.load_weights('ddpg_weights.h5f')
 
     def train_model(self, env, action_size):
-        self.agent.fit(env, nb_steps=800000, visualize=True, verbose=1, nb_max_episode_steps=300)
-        self.agent.save_weights('ddpg_weights.h5f', overwrite=True)
-        self.agent.test(env, nb_episodes=10, visualize=True, nb_max_episode_steps=300)
+        # self.agent.load_weights('ddpg_weights.h5f')
+        for it in range(0, 100000, 1):
+            self.agent.fit(env, nb_steps=10000, visualize=False, verbose=1, nb_max_episode_steps=500)
+            self.agent.save_weights('ddpg_weights{}.h5f'.format(it), overwrite=True)
+            self.agent.test(env, nb_episodes=50, visualize=True)
+            sleep(1)
+            self.agent.load_weights('ddpg_weights{}.h5f'.format(it))
 
     def load_model(self, env, action_size):
         self.agent.load_weights('ddpg_weights.h5f')

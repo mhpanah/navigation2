@@ -36,10 +36,9 @@ class Turtlebot3Environment(GazeboInterface):
         self.collision = False
         self.collision_tol = 0.125
         self.laser_scan_range = [0] * 360
-        self.states_input = [3.5] * 8
+        self.laser_scans = [3.5] * 8
         self.zero_div_tol = 0.01
         self.range_min = 0.0
-        self.states = []
 
         self.current_pose = Pose()
         self.goal_pose = Pose()
@@ -63,18 +62,15 @@ class Turtlebot3Environment(GazeboInterface):
             else:
                 self.laser_scan_range.append(LaserScan.ranges[i])
 
-        self.states_input.clear()
-        self.states_input = []
+        self.laser_scans.clear()
+        self.laser_scans = []
         for i in range(8):
             step = int(len(LaserScan.ranges) / 8)
-            self.states_input.append(min(self.laser_scan_range[i * step:(i + 1) * step],
+            self.laser_scans.append(min(self.laser_scan_range[i * step:(i + 1) * step],
                                      default=0))
-        if self.check_collision():
-            self.collision = True
-            self.done = True
 
     def check_collision(self):
-        if min(self.states_input) < self.range_min + self.collision_tol:
+        if min(self.laser_scans) < self.range_min + self.collision_tol:
             return True
         return False
 
@@ -82,7 +78,7 @@ class Turtlebot3Environment(GazeboInterface):
         return len(self.actions)
 
     def observation_space_size(self):
-        return len(self.states)
+        return len(self.observation())
 
     def stop_action(self):
         vel_cmd = Twist()
@@ -120,7 +116,7 @@ class Turtlebot3Environment(GazeboInterface):
         self.stop_action()
 
         self.laser_scan_range = [0] * 360
-        self.states_input = [3.5] * 8
+        self.laser_scans = [3.5] * 8
         while not self.scan_msg_received and rclpy.ok():
             sleep(0.1 / self.time_factor)
         self.collision = False
@@ -150,5 +146,20 @@ class Turtlebot3Environment(GazeboInterface):
         get_reward = self.compute_reward()
         # Pause environment
         self.pause_gazebo_world()
+
+        self.reward_sum +=get_reward[0]
+        self.max_step += 1
+        if self.max_step > 500:
+            print('Max steps...')
+            self.hard_reset = True
+            self.max_step = 0
+            self.done = True
+        if self.done:
+            self.episode_tensor += 1
+            self.writer.add_scalar('reward_sum',self.reward_sum, self.episode_tensor)
+            self.reward_sum = 0.0
+            if self.episode_tensor > 10000:
+                self.writer.close()
+
 
         return self.observation(), get_reward[0], self.done, {}
