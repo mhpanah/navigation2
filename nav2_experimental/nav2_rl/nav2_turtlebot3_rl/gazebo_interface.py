@@ -52,7 +52,7 @@ class GazeboInterface(Env):
         self.time_to_sample = 1.0
         self.count = 0
         self.gazebo_started = False
-        self.gazebo_process = subprocess.Popen(['gazebo', '-s', 'libgazebo_ros_init.so',
+        self.gazebo_process = subprocess.Popen(['gzserver', '-s', 'libgazebo_ros_init.so',
         '/home/mohammad/OTC_workDir/navigation2/nav2_system_tests/worlds/turtlebot3_ros2_demo.world'])
         self.gazebo_started = True
         
@@ -89,12 +89,13 @@ class GazeboInterface(Env):
         req.state.pose.position.z = 0.0
         req.state.pose.orientation = entity_pose.orientation
         future = self.set_entity_state.call_async(req)
+        #rclpy.spin_until_future_complete(self.node_, future)
         while not future.done() and rclpy.ok():
-            sleep(0.1)
+            sleep(0.01)
         sleep(0.5)
 
     def pause_gazebo_world(self):
-        while not self.pause_proxy.wait_for_service(timeout_sec=1.0 / self.time_factor):
+        while not self.pause_proxy.wait_for_service(timeout_sec=0.1):
             print('Pause Environment service is not available...')
             self.count += 1
             if self.count > 5:
@@ -104,7 +105,7 @@ class GazeboInterface(Env):
         self.pause_proxy.call_async(Empty.Request())
 
     def unpause_gazebo_world(self):
-        while not self.unpause_proxy.wait_for_service(timeout_sec=1.0 / self.time_factor):
+        while not self.unpause_proxy.wait_for_service(timeout_sec=0.1):
             print('Unpause Environment service is not available...')
             self.count += 1
             if self.count > 5:
@@ -135,7 +136,7 @@ class GazeboInterface(Env):
 
     def restart_gazebo(self):
         self.kill_gazebo()
-        self.gazebo_process = subprocess.Popen(['gazebo', '-s', 'libgazebo_ros_init.so',
+        self.gazebo_process = subprocess.Popen(['gzserver', '-s', 'libgazebo_ros_init.so',
         '/home/mohammad/OTC_workDir/navigation2/nav2_system_tests/worlds/turtlebot3_ros2_demo.world'])
         print(self.gazebo_process.pid)
         self.gazebo_started == True
