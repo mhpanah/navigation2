@@ -38,14 +38,14 @@ from rl_coach.coach import CoachInterface
 
 class TB3Processor(WhiteningNormalizerProcessor):
     def process_action(self, action):
-        return np.clip(action, -0.2, 0.2)
+        return action*0.26
 
 
 class TB3NavigationEnvironmentDDPG(NavigationTaskEnv):
     def __init__(self):
         super().__init__()
-        self.action_space = spaces.Box(low=-0.2,
-                                       high=0.2,
+        self.action_space = spaces.Box(low=-0.26,
+                                       high=0.26,
                                        shape=(2,),
                                        dtype=np.float32)
 
@@ -85,12 +85,10 @@ class NavigatorDDPG():
         observation_input = Input(shape=(1,) + (self.observation_space_size,),
                                   name='observation_input')
         flattened_observation = Flatten()(observation_input)
-        x = Concatenate()([action_input, flattened_observation])
-        x = Dense(64)(x)
+        x = Dense(400)(flattened_observation)
         x = Activation('relu')(x)
-        x = Dense(64)(x)
-        x = Activation('relu')(x)
-        x = Dense(64)(x)
+        x = Concatenate()([x, action_input])
+        x = Dense(300)(x)
         x = Activation('relu')(x)
         x = Dense(1)(x)
         x = Activation('linear')(x)
@@ -101,10 +99,10 @@ class NavigatorDDPG():
 
         random_process = OrnsteinUhlenbeckProcess(size=nb_actions, theta=.03, mu=0., sigma=.04)
 
-        # Build Agent
         self.agent = DDPGAgent(nb_actions=nb_actions,
                                actor=self.actor, critic=self.critic,
                                critic_action_input=action_input,
+                               batch_size=16,
                                memory=memory,
                                nb_steps_warmup_critic=5000,
                                nb_steps_warmup_actor=5000,

@@ -50,6 +50,7 @@ class TB3EnvironmentDDPG(NavigationTaskEnv):
                                        shape=(2,),
                                        dtype=np.float32)
         self.spec = None
+        self.hard_reset = True
 
     def __del__(self):
         self.cleanup()
@@ -90,34 +91,36 @@ class NavigatorDDPG():
         # Agent
         agent_params = DDPGAgentParameters()
 
+        # OrnsteinUhlenbeckProcess parameters
+        agent_params.exploration.mu = 0.0
+        agent_params.exploration.theta = 0.15
+        agent_params.exploration.sigma = 0.2
+ 
         # Actor Model
         agent_params.network_wrappers['actor'].\
-            input_embedders_parameters['observation'].scheme = [Dense(32)]
-        agent_params.network_wrappers['actor'].\
-            middleware_parameters.scheme = [Dense(32), Dense(32)]
+            input_embedders_parameters['observation'].scheme = [Dense(400)]
+        agent_params.network_wrappers['actor'].middleware_parameters.scheme = [Dense(300)]
         agent_params.network_wrappers['actor'].middleware_parameters.activation_function = 'relu'
+        agent_params.network_wrappers['actor'].heads_parameters[0].activation_function = 'tanh'
 
         # Critic Model
-        # agent_params.network_wrappers['critic'].input_embedders_parameters['observation'].scheme = [Dense(64)]
-        # agent_params.network_wrappers['critic'].middleware_parameters.scheme = [Dense(64), Dense(64)]
-
-        agent_params.network_wrappers['critic'].input_embedders_parameters['observation'].scheme = EmbedderScheme.Empty
-        agent_params.network_wrappers['critic'].input_embedders_parameters['action'].scheme = EmbedderScheme.Empty
-        agent_params.network_wrappers['critic'].middleware_parameters.scheme = [Dense(64), Dense(64), Dense(64)]
-        agent_params.network_wrappers['critic'].middleware_parameters.activation_function =  'relu'
-        agent_params.network_wrappers['critic'].heads_parameters[0].activation_function = 'none' #action
- 
+        agent_params.network_wrappers['critic'].\
+            input_embedders_parameters['observation'].scheme = [Dense(400)]
+        agent_params.network_wrappers['critic'].middleware_parameters.scheme = [Dense(300)]
+        agent_params.network_wrappers['critic'].\
+            input_embedders_parameters['action'].scheme = EmbedderScheme.Empty
+        agent_params.network_wrappers['critic'].middleware_parameters.activation_function = 'relu'
+        agent_params.network_wrappers['critic'].heads_parameters[0].activation_function = 'none'
 
         # Environment
         self.env_params = GymVectorEnvironment(level='coach_navigator_ddpg:TB3EnvironmentDDPG')
-
+        #
         self.graph_manager = BasicRLGraphManager(agent_params=agent_params,
                                                  env_params=self.env_params,
                                                  schedule_params=schedule_params,
                                                  vis_params=VisualizationParameters())
 
-        # Resources path was defined at the top of this notebook
-        resources_path = '/home/mohammad/OTC_workDir/navigation2/temp'
+        resources_path = '/home/mohammad/OTC_workDir/navigation2/baby_steps'
         self.my_checkpoint_dir = resources_path + '/checkpoints'
 
     def train_model(self):
@@ -132,7 +135,6 @@ class NavigatorDDPG():
            self.graph_manager.heatup(EnvironmentSteps(100))
 
         # Train
-        self.graph_manager.heatup(EnvironmentSteps(5))
         for episode in range(40000):
             self.graph_manager.train_and_act(EnvironmentSteps(100))
             self.graph_manager.heatup(EnvironmentSteps(100))

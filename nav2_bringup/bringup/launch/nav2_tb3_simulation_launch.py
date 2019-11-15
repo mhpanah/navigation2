@@ -28,6 +28,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
 from nav2_common.launch import Node
+import launch_ros.actions
 
 
 def generate_launch_description():
@@ -56,8 +57,11 @@ def generate_launch_description():
     #              https://github.com/ros2/launch_ros/issues/56
     remappings = [((namespace, '/tf'), '/tf'),
                   ((namespace, '/tf_static'), '/tf_static'),
+                  ('/scan', 'scan'),
                   ('/tf', 'tf'),
-                  ('/tf_static', 'tf_static')]
+                  ('/tf_static', 'tf_static'),
+                  ('/cmd_vel', 'cmd_vel'),
+                  ('/map', 'map')]
 
     # Declare the launch arguments
     declare_namespace_cmd = DeclareLaunchArgument(
@@ -178,6 +182,13 @@ def generate_launch_description():
                           'autostart': autostart,
                           'use_remappings': use_remappings}.items())
 
+    tf_static_map_odom = launch_ros.actions.Node(
+        package='tf2_ros',
+        node_executable='static_transform_publisher',
+        output='screen',
+        arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'])
+    
+
     # Create the launch description and populate
     ld = LaunchDescription()
 
@@ -195,10 +206,10 @@ def generate_launch_description():
     ld.add_action(declare_use_robot_state_pub_cmd)
     ld.add_action(declare_use_rviz_cmd)
     ld.add_action(declare_simulator_cmd)
-    ld.add_action(declare_world_cmd)
+    #ld.add_action(declare_world_cmd)
 
     # Add any conditioned actions
-    ld.add_action(start_gazebo_cmd)
+    #ld.add_action(start_gazebo_cmd)
     ld.add_action(start_rviz_cmd)
 
     # Add other nodes and processes we need
@@ -207,5 +218,6 @@ def generate_launch_description():
     # Add the actions to launch all of the navigation nodes
     ld.add_action(start_robot_state_publisher_cmd)
     ld.add_action(bringup_cmd)
+    ld.add_action(tf_static_map_odom)
 
     return ld

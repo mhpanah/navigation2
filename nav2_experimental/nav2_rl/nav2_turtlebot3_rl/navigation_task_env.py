@@ -27,7 +27,8 @@ from rclpy.node import Node
 from nav2_msgs.action import ComputePathToPose
 import nav2_msgs
 from geometry_msgs.msg import PoseStamped, TransformStamped
-from geometry_msgs.msg import Twist, Pose
+from geometry_msgs.msg import Twist, Pose, Point
+from visualization_msgs.msg import Marker, MarkerArray
 from action_msgs.msg import GoalStatus
 
 from gym import spaces
@@ -92,8 +93,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
             print('Action client server is not available, restarting gazebo...')
             self.restart_gazebo()
 
-        self._send_goal_future = self.action_client_.send_goal_async(
-            goal_msg)
+        self._send_goal_future = self.action_client_.send_goal_async(goal_msg)
         
         self._send_goal_future.add_done_callback(self.goal_response_callback)
 
@@ -113,36 +113,41 @@ class NavigationTaskEnv(Turtlebot3Environment):
             self.path_is_valid = True
         else:
             print("Failed to get path")
+            self.path_fail_count += 1 
+            self.path_is_valid = False
+            if self.path_fail_count == 10:
+                self.path_fail_count = 0
+                self.restart_gazebo()
 
         self.result_path = result.path.poses
         self.new_path_received = True
 
     def get_actions(self):
         """Defines the actions that the environment can have
-
         # Argument
             None
-
         # Returns
             The list of possible actions
         """
         raise NotImplementedError()
+
 
     def compute_reward(self):
 
         reward = 0.0
         goal_dist_sq = self.sq_distance_to_goal()
 
-        obstacle_reward = - (1 / (min(self.states_input)**2)) * 0.05
+        if self.check_collision():
+             self.collision = True
+             self.done = True
+             self.hard_reset = True
 
-        if goal_dist_sq > 0.25:
-            distance_reward = -(goal_dist_sq)
-            heading_reward = -0.5 * self.get_heading()**2
-        else:
-            distance_reward = 1000
-            heading_reward = 1000
+        if self.collision:
+            reward = -500.0
             self.done = True
-            print("Goal Reached")
+            self.hard_reset = True
+            print("Collision Reward: {}".format(reward))
+            return reward, self.done
 
         elif goal_dist_sq < 0.25:
             reward = 500.0
@@ -190,13 +195,6 @@ class NavigationTaskEnv(Turtlebot3Environment):
             self.done = False
             self.hard_reset = False
 
-        reward += distance_reward
-        reward += heading_reward
-        reward += obstacle_reward
-
-        if self.collision:
-            reward = -500
-            self.done = True
         return reward, self.done
 
     def set_random_robot_pose(self):
@@ -215,10 +213,10 @@ class NavigationTaskEnv(Turtlebot3Environment):
 
     def get_random_pose(self):
         random_pose = Pose()
-        yaw = random.uniform(0, pi * 2)
+        yaw = random.uniform(-pi * 2, pi * 2)
 
-        random_pose.position.x = random.uniform(-2, 2)
-        random_pose.position.y = random.uniform(-2, 2)
+        random_pose.position.x = random.uniform(-1, 2) # 2.0 uniform(-0.5, 2)
+        random_pose.position.y = random.uniform(-2, 2) #  -0.5
         random_pose.position.z = 0.0
         random_pose.orientation.x = 0.0
         random_pose.orientation.y = 0.0
@@ -231,6 +229,15 @@ class NavigationTaskEnv(Turtlebot3Environment):
         self.get_robot_pose()
         dx = self.goal_pose.position.x - self.current_pose.position.x
         dy = self.goal_pose.position.y - self.current_pose.position.y
+        return dx * dx + dy * dy
+    
+    def sq_distance_to_checkpoint(self):
+        self.get_robot_pose()
+        checkpoint_x = self.checkpoints[0][0]
+        checkpoint_y = self.checkpoints[0][1]
+        dx = checkpoint_x - self.current_pose.position.x
+        dy = checkpoint_y - self.current_pose.position.y
+
         return dx * dx + dy * dy
 
     def get_heading(self, checkpoint_index):
@@ -497,7 +504,6 @@ class NavigationTaskEnv(Turtlebot3Environment):
         self.path_index = self.path_resolution
         self.get_checkpoints()
 
-        return self.observation()
 
     def get_path(self):
         '''

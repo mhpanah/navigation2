@@ -25,6 +25,8 @@ from geometry_msgs.msg import Twist, Pose
 from sensor_msgs.msg import LaserScan
 from gazebo_msgs.srv import GetEntityState
 
+from tensorboardX import SummaryWriter
+
 class Turtlebot3Environment(GazeboInterface):
     def __init__(self):
         super().__init__()
@@ -34,7 +36,7 @@ class Turtlebot3Environment(GazeboInterface):
         self.actions = self.get_actions()
 
         self.collision = False
-        self.num_laser_scans = 360
+        self.num_laser_scans = 36
         self.collision_tol = 0.125
         self.laser_scan_range = [0] * 360
         self.laser_scans = [3.5] * self.num_laser_scans
@@ -45,9 +47,13 @@ class Turtlebot3Environment(GazeboInterface):
         self.goal_pose = Pose()
 
         self.pub_cmd_vel = self.node_.create_publisher(Twist, 'cmd_vel', 1)
-        self.sub_scan = self.node_.create_subscription(LaserScan, '/turtlebot3_laserscan/out', self.scan_callback,
+        self.sub_scan = self.node_.create_subscription(LaserScan, '/scan', self.scan_callback,
                                                        qos_profile_sensor_data)
         self.scan_msg_received = False
+        self.writer = SummaryWriter()
+        self.reward_sum = 0
+        self.episode_tensor = 0
+        self.linear_velocity = 0.0
 
     def scan_callback(self, LaserScan):
         self.scan_msg_received = True
@@ -67,8 +73,9 @@ class Turtlebot3Environment(GazeboInterface):
         self.laser_scans = []
         for i in range(self.num_laser_scans):
             step = int(len(LaserScan.ranges) / self.num_laser_scans)
-            self.laser_scans.append(min(self.laser_scan_range[i * step:(i + 1) * step],
-                                     default=0))
+            self.laser_scans.append(self.laser_scan_range[i*step])
+            #self.laser_scans.append(min(self.laser_scan_range[i * step:(i + 1) * step],
+            #                         default=0))
 
     def check_collision(self):
         if min(self.laser_scans) < self.range_min + self.collision_tol:
@@ -116,7 +123,7 @@ class Turtlebot3Environment(GazeboInterface):
         self.scan_msg_received = False
 
         self.stop_action()
-        self.num_laser_scans = 360
+        self.num_laser_scans = 36
         self.laser_scan_range = [0] * 360
         self.laser_scans = [3.5] * self.num_laser_scans
         while not self.scan_msg_received and rclpy.ok():
@@ -126,10 +133,8 @@ class Turtlebot3Environment(GazeboInterface):
 
     def get_velocity_cmd(self):
         """gets the velocity cmd from action
-
         # Argument
             None
-
         # Returns
             Select velocity cmd's from the action list
         """
@@ -141,6 +146,7 @@ class Turtlebot3Environment(GazeboInterface):
         vel_cmd = Twist()
         self.act = action
         vel_cmd.linear.x, vel_cmd.linear.y, vel_cmd.angular.z = self.get_velocity_cmd(action)
+        self.linear_velocity = vel_cmd.linear.x
         self.pub_cmd_vel.publish(vel_cmd)
         sleep(parameters.LOOP_RATE / self.time_factor)
         self.stop_action()

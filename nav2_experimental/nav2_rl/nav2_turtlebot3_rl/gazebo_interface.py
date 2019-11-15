@@ -23,7 +23,7 @@ from rclpy.duration import Duration
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.parameter import Parameter
-
+#import tf2_ros
 
 from std_srvs.srv import Empty
 from gazebo_msgs.srv import GetEntityState, SetEntityState
@@ -31,6 +31,7 @@ from gazebo_msgs.srv import GetEntityState, SetEntityState
 import os
 import subprocess
 import signal
+
 
 class GazeboInterface(Env):
     def __init__(self):
@@ -55,13 +56,13 @@ class GazeboInterface(Env):
         self.gazebo_process = subprocess.Popen(['gzserver', '-s', 'libgazebo_ros_init.so',
         '/home/mohammad/OTC_workDir/navigation2/nav2_system_tests/worlds/turtlebot3_ros2_demo.world'])
         self.gazebo_started = True
+        #self.tf_broadcaster = TransformBroadcaster(self.node_)
+        #self.send_transform()
         
     def get_robot_pose(self):
         """Gets the robot pose with respect to the world
-
         Argument:
             None
-
         Returns:
             The robot pose
         """
@@ -139,8 +140,31 @@ class GazeboInterface(Env):
         self.gazebo_process = subprocess.Popen(['gzserver', '-s', 'libgazebo_ros_init.so',
         '/home/mohammad/OTC_workDir/navigation2/nav2_system_tests/worlds/turtlebot3_ros2_demo.world'])
         print(self.gazebo_process.pid)
+        #self.send_transform()
         self.gazebo_started == True
     
     def kill_gazebo(self):
         os.kill(self.gazebo_process.pid, signal.SIGKILL)
         self.gazebo_started == False
+
+#     def send_transform(self):
+#         # Fill up the static transform message
+#         static_transformStamped = TransformStamped()
+#         
+#         current_time = self.node_._clock.now()
+
+#         static_transformStamped.header.stamp = current_time.to_msg()
+#         static_transformStamped.header.frame_id = "map" #odom
+#         static_transformStamped.child_frame_id = "odom" #base_link
+
+#         static_transformStamped.transform.translation.x = 0.0 # initial_robot_x
+#         static_transformStamped.transform.translation.y = 0.0 # initial_robot_y
+#         static_transformStamped.transform.translation.z = 0.0
+
+#         static_transformStamped.transform.rotation.x = 0.0 # initial_robot_...
+#         static_transformStamped.transform.rotation.y = 0.0
+#         static_transformStamped.transform.rotation.z = 0.0
+#         static_transformStamped.transform.rotation.w = 1.0
+
+#         self.tf_broadcaster.sendTransform(static_transformStamped)
+#         print("transform sent")
