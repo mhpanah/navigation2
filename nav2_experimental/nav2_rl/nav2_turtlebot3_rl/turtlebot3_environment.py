@@ -34,9 +34,10 @@ class Turtlebot3Environment(GazeboInterface):
         self.actions = self.get_actions()
 
         self.collision = False
+        self.num_laser_scans = 360
         self.collision_tol = 0.125
         self.laser_scan_range = [0] * 360
-        self.laser_scans = [3.5] * 8
+        self.laser_scans = [3.5] * self.num_laser_scans
         self.zero_div_tol = 0.01
         self.range_min = 0.0
 
@@ -64,8 +65,8 @@ class Turtlebot3Environment(GazeboInterface):
 
         self.laser_scans.clear()
         self.laser_scans = []
-        for i in range(8):
-            step = int(len(LaserScan.ranges) / 8)
+        for i in range(self.num_laser_scans):
+            step = int(len(LaserScan.ranges) / self.num_laser_scans)
             self.laser_scans.append(min(self.laser_scan_range[i * step:(i + 1) * step],
                                      default=0))
 
@@ -98,6 +99,7 @@ class Turtlebot3Environment(GazeboInterface):
         req.name = 'turtlebot3_waffle'
         future = self.get_entity_state.call_async(req)
 
+        #rclpy.spin_until_future_complete(self.node_, future)
         while not future.done() and rclpy.ok():
             sleep(0.01 / self.time_factor)
 
@@ -114,11 +116,11 @@ class Turtlebot3Environment(GazeboInterface):
         self.scan_msg_received = False
 
         self.stop_action()
-
+        self.num_laser_scans = 360
         self.laser_scan_range = [0] * 360
-        self.laser_scans = [3.5] * 8
+        self.laser_scans = [3.5] * self.num_laser_scans
         while not self.scan_msg_received and rclpy.ok():
-            sleep(0.1 / self.time_factor)
+            sleep(0.01)
         self.collision = False
         self.done = False
 
@@ -140,16 +142,16 @@ class Turtlebot3Environment(GazeboInterface):
         self.act = action
         vel_cmd.linear.x, vel_cmd.linear.y, vel_cmd.angular.z = self.get_velocity_cmd(action)
         self.pub_cmd_vel.publish(vel_cmd)
-        vel_cmd.linear.x = 0.0
-        vel_cmd.angular.z = 0.0
         sleep(parameters.LOOP_RATE / self.time_factor)
+        self.stop_action()
         get_reward = self.compute_reward()
+
         # Pause environment
         self.pause_gazebo_world()
 
         self.reward_sum +=get_reward[0]
         self.max_step += 1
-        if self.max_step > 500:
+        if self.max_step > 499:
             print('Max steps...')
             self.hard_reset = True
             self.max_step = 0
