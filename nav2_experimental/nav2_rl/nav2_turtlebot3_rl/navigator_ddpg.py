@@ -97,19 +97,21 @@ class NavigatorDDPG():
         self.critic = Model(inputs=[action_input, observation_input], outputs=x)
         print(self.critic.summary())
 
-        memory = SequentialMemory(limit=400000, window_length=1)
-        random_process = OrnsteinUhlenbeckProcess(size=nb_actions, theta=.15, mu=0., sigma=.3)
+        memory = SequentialMemory(limit=1000000, window_length=1) #400000
+
+        random_process = OrnsteinUhlenbeckProcess(size=nb_actions, theta=.03, mu=0., sigma=.04)
 
         # Build Agent
         self.agent = DDPGAgent(nb_actions=nb_actions,
                                actor=self.actor, critic=self.critic,
                                critic_action_input=action_input,
                                memory=memory,
-                               nb_steps_warmup_critic=10000,
-                               nb_steps_warmup_actor=10000,
+                               nb_steps_warmup_critic=5000,
+                               nb_steps_warmup_actor=5000,
                                random_process=random_process,
                                gamma=.99,
-                               target_model_update=100,
+                               target_model_update=0.01,
+                               train_interval = 1,
                                processor=TB3Processor())
         
         self.agent.compile([Adam(lr=1e-4), Adam(lr=1e-3)], metrics=['mae'])
@@ -118,7 +120,7 @@ class NavigatorDDPG():
     def train_model(self, env, action_size):
         # self.agent.load_weights('ddpg_weights.h5f')
         for it in range(0, 100000, 1):
-            self.agent.fit(env, nb_steps=10000, visualize=False, verbose=1, nb_max_episode_steps=500)
+            self.agent.fit(env, nb_steps=60000, visualize=False, verbose=1, nb_max_episode_steps=500)
             self.agent.save_weights('ddpg_weights{}.h5f'.format(it), overwrite=True)
             self.agent.test(env, nb_episodes=50, visualize=True)
             sleep(1)
@@ -126,7 +128,17 @@ class NavigatorDDPG():
 
     def load_model(self, env, action_size):
         self.agent.load_weights('ddpg_weights.h5f')
-        self.agent.test(env, nb_episodes=5, visualize=True, nb_max_episode_steps=300)
+        sleep(5)
+        # self.agent.test(env, nb_episodes=500, visualize=True)
+        observation = env.reset()
+        for _ in range(5000):
+            action = self.agent.forward(observation)
+            # if self.processor is not None:
+            #     action = self.processor.process_action(action)
+            observation, r, done, info = env.step(action)
+            if done:
+                observation = env.reset()
+
 
 
 def main(args=None):
