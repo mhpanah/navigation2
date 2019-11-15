@@ -65,7 +65,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         self.path_fail_count = 0
         self.local_path_index = 0
         self.num_check_points = 5
-        self.checkpoints = [[0.0,0.0]] * self.num_check_points
+        self.checkpoints = [[0.0,0.0,0.0]] * self.num_check_points
         self.distance_to_checkpoint = [0.0, 0.0, 0.0, 0.0, 0.0]
 
         _high = [3.5]*len(self.laser_scans)
@@ -153,7 +153,10 @@ class NavigationTaskEnv(Turtlebot3Environment):
         
         elif self.reached_point:
             # reward += 50.0 * (self.checkpoint_index + 1)
-            reward = 500.0
+            # reward = 500.0
+            reward = (500.0 * cos(self.get_yaw(self.current_pose)-self.checkpoints[self.checkpoint_index][2]))
+            if reward < 0.0:
+                reward = 0.0
             print("checkpoint Reward: {}".format(reward))
             self.done = True
             self.hard_reset = False
@@ -161,8 +164,10 @@ class NavigationTaskEnv(Turtlebot3Environment):
 
         else:          
             linear_velocity_sign = -0.2 if self.linear_velocity < 0 else 0.2
+            #scenario 1
             reward = -1 + linear_velocity_sign
-            
+
+            # scenario 2
             # reward = -self.distance_to_checkpoint[0]*0.1
             #          -self.distance_to_checkpoint[1]*0.2
             #          -self.distance_to_checkpoint[2]*0.3
@@ -170,6 +175,17 @@ class NavigationTaskEnv(Turtlebot3Environment):
             #          -self.distance_to_checkpoint[4]*0.5
             #          -0.1
             #          +linear_velocity_sign
+
+            # scenario 3
+            # try to add obstacle penalty on the sparse reward
+            
+            # if min(self.laser_scans) <= 0.25:
+            #     obstacle_penalty = 8 - (1 / (min(self.laser_scans)**2)) * 0.5
+            # else:
+            #     obstacle_penalty = 0.0
+
+            # # obstacle_penalty = - (1 / (min(self.laser_scans)**2)) * 0.05
+            # reward = -1 + linear_velocity_sign + obstacle_penalty
 
             self.done = False
             self.hard_reset = False
@@ -217,12 +233,32 @@ class NavigationTaskEnv(Turtlebot3Environment):
         dy = self.goal_pose.position.y - self.current_pose.position.y
         return dx * dx + dy * dy
 
-    def get_heading(self):
-        goal_angle = math.atan2(self.goal_pose.position.y - self.current_pose.position.y,
-                                self.goal_pose.position.x - self.current_pose.position.x)
+    def get_heading(self, checkpoint_index):
 
-        current_yaw = self.get_yaw(self.current_pose)
-        heading = goal_angle - current_yaw
+        checkpointx = self.checkpoints[checkpoint_index][0]
+        checkpointy = self.checkpoints[checkpoint_index][1]
+        if (checkpoint_index < self.num_check_points-1):
+            next_checkpointx = self.checkpoints[checkpoint_index+1][0]
+            next_checkpointy = self.checkpoints[checkpoint_index+1][1]
+        else:
+            next_checkpointx = self.goal_pose.position.x #self.path[self.local_path_index+self.resolution]
+            next_checkpointy = self.goal_pose.position.y
+        
+        goal_angle = math.atan2(next_checkpointy - checkpointy,
+                                next_checkpointx - checkpointx)
+        heading = goal_angle
+
+
+        # checkpoint_x = self.checkpoints[0][0]
+        # checkpoint_y = self.checkpoints[0][1]
+        # goal_angle = math.atan2(checkpoint_y - self.current_pose.position.y,
+        #                         checkpoint_x - self.current_pose.position.x)
+
+        # goal_angle = math.atan2(self.goal_pose.position.y - self.current_pose.position.y,
+        #                         self.goal_pose.position.x - self.current_pose.position.x)
+
+        # current_yaw = self.get_yaw(self.current_pose)
+        # heading = goal_angle - current_yaw
 
         if heading > pi:
             heading -= 2 * pi
@@ -253,6 +289,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         for i in range(len(self.checkpoints)):
             checkpoint.append(self.checkpoints[i][0])
             checkpoint.append(self.checkpoints[i][1])
+            checkpoint.append(self.checkpoints[i][2])
 
         reached, iteration = self.reached_checkpoint()
         self.reached_point = reached
@@ -294,7 +331,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
     def get_checkpoints(self):
         counter = 0
         self.checkpoints.clear()
-        self.checkpoints = [[0.0,0.0]] * self.num_check_points
+        self.checkpoints = [[0.0,0.0,0.0]] * self.num_check_points
         for self.local_path_index in range(self.path_index, len(self.path), self.path_resolution):                
             if counter == self.num_check_points:
                 break
@@ -307,6 +344,9 @@ class NavigationTaskEnv(Turtlebot3Environment):
             self.checkpoints[counter] = self.path[self.local_path_index]
             counter += 1
 
+        for i in range(0, len(self.checkpoints), 1):
+            self.checkpoints[i][2] = self.get_heading(i)
+
         return np.array(self.checkpoints)
         
     def reached_checkpoint(self):
@@ -317,7 +357,6 @@ class NavigationTaskEnv(Turtlebot3Environment):
             dist = dx * dx + dy * dy
             self.distance_to_checkpoint[it] = dist
             if dist < 0.0625:
-                print(it)
                 return [True, it]
         return [False, it]
 
@@ -332,6 +371,10 @@ class NavigationTaskEnv(Turtlebot3Environment):
             marker.id = i
             marker.pose.position.x = self.checkpoints[i][0]
             marker.pose.position.y = self.checkpoints[i][1]
+            marker.pose.orientation.x = 0.0
+            marker.pose.orientation.y = 0.0
+            marker.pose.orientation.z = sin(self.checkpoints[i][2] * 0.5)
+            marker.pose.orientation.w = cos(self.checkpoints[i][2] * 0.5)
             marker.text = "Checkpoint: {}".format(i)
             markerArray.markers.append(marker)
 
@@ -342,6 +385,10 @@ class NavigationTaskEnv(Turtlebot3Environment):
         marker.id = i+1
         marker.pose.position.x = self.goal_pose.position.x
         marker.pose.position.y = self.goal_pose.position.y
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = self.goal_pose.orientation.z
+        marker.pose.orientation.w = self.goal_pose.orientation.w
         marker.text = 'Goal_pose'
         markerArray.markers.append(marker)
 
@@ -352,6 +399,8 @@ class NavigationTaskEnv(Turtlebot3Environment):
         marker.id = i+2
         marker.pose.position.x = self.current_pose.position.x
         marker.pose.position.y = self.current_pose.position.y
+        marker.pose.orientation.z = self.current_pose.orientation.z
+        marker.pose.orientation.w = self.current_pose.orientation.w
         marker.text = 'Current_pose'
         markerArray.markers.append(marker)
 
@@ -360,7 +409,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
     def add_marker(self):
         marker = Marker()
         marker.header.frame_id = "/map"
-        marker.type = marker.SPHERE
+        marker.type = marker.ARROW
         marker.action = marker.ADD
         marker.pose.position.z = 0.0
         marker.pose.orientation.x = 0.0
@@ -419,7 +468,8 @@ class NavigationTaskEnv(Turtlebot3Environment):
         self.path = []
         for i in range(len(self.result_path)):
              self.path.append([float(self.result_path[i].pose.position.x),
-                               float(self.result_path[i].pose.position.y)])
+                               float(self.result_path[i].pose.position.y),
+                               0.0])
 
         self.path_resolution = 10
         if len(self.result_path) <= self.path_resolution * self.num_check_points:
@@ -432,17 +482,17 @@ class NavigationTaskEnv(Turtlebot3Environment):
         count = 0
         if len(self.path) is not 0:
             for i in range(len(self.path)):
-                self.checkpoints.append([self.path[i][0], self.path[i][1]])
+                self.checkpoints.append([self.path[i][0], self.path[i][1],0.0])
                 count = i
                 if i == 4:
                     break
 
             if count < self.num_check_points:
                 while count < 4:
-                    self.checkpoints.append([self.path[i][0], self.path[i][1]])
+                    self.checkpoints.append([self.path[i][0], self.path[i][1],0.0])
                     count += 1
         else:
-            self.checkpoints = [[0.0,0.0]] * self.num_check_points
+            self.checkpoints = [[0.0,0.0,0.0]] * self.num_check_points
 
         self.path_index = self.path_resolution
         self.get_checkpoints()
