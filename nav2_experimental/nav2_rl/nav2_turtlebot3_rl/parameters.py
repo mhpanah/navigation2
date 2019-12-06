@@ -12,7 +12,7 @@ EXPLORATION_TARGET_STEP = 10000
 TARGET_MODEL_UPDATE_STEP = 40  # Number of steps before updating the target model
 EXPERIENCE_REPLAY_STEP = 10  # Number of episodes before calling experience replay
 EPISODES = 100000  # Desired number of episodes to run
-LOOP_RATE = 0.2  # Control loop rate in seconds
+LOOP_RATE = 0.05  # Control loop rate in seconds
 
 # Turtlebot 3 environment parameters
 LINEAR_FWD_VELOCITY = 0.16
