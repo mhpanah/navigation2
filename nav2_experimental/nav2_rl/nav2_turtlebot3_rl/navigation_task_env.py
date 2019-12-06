@@ -37,14 +37,11 @@ class NavigationTaskEnv(Turtlebot3Environment):
     def __init__(self):
         super().__init__()
         self.NavigationTaskEnv = NavigationTaskEnv
-
         self.act = 0
         self.done = False
         self.actions = self.get_actions()
         self.collision = False
         self.collision_tol = 0.125
-        self.laser_scan_range = [0] * 360
-        self.laser_scans = [3.5] * 8
         self.zero_div_tol = 0.01
         self.range_min = 0.0
         self.current_pose = Pose()
@@ -59,7 +56,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
 
         self.path = []
         self.path_index = 0
-        self.path_resolution = 10
+        self.path_resolution = 20
         self.reached_point = False
         self.checkpoint_index = 0
         self.hard_reset = True
@@ -84,6 +81,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         #     observation=spaces.Box(low=-10.0, high=10.0, shape=obs['observation'].shape, dtype=np.float32),
         # ))
         self.observation_space = spaces.Box(np.array(_min), np.array(_high), dtype=np.float32)
+        self.episode_reward = 0.0
         
     def send_goal(self, goal_pose):
         goal_msg = nav2_msgs.action.ComputePathToPose.Goal()
@@ -124,14 +122,16 @@ class NavigationTaskEnv(Turtlebot3Environment):
 
     def get_actions(self):
         """Defines the actions that the environment can have
+
         # Argument
             None
+
         # Returns
             The list of possible actions
         """
         raise NotImplementedError()
 
-
+   
     def compute_reward(self):
 
         reward = 0.0
@@ -149,59 +149,33 @@ class NavigationTaskEnv(Turtlebot3Environment):
             print("Collision Reward: {}".format(reward))
             return reward, self.done
 
-        elif goal_dist_sq < 0.25:
-            reward = 500.0
-            self.done = True
-            self.hard_reset = True
-            print("Goal Reached Reward: {}".format(reward))
-            return reward, self.done
-        
         elif self.reached_point:
-            # reward += 50.0 * (self.checkpoint_index + 1)
-            # reward = 500.0
             reward = (500.0 * cos(self.get_yaw(self.current_pose)-self.checkpoints[self.checkpoint_index][2]))
             if reward < 0.0:
                 reward = 0.0
-            print("checkpoint Reward: {}".format(reward))
+            reward = 500.0
+            print("Episode Reward: {}".format(self.episode_reward + reward))
             self.done = True
             self.hard_reset = False
+            if goal_dist_sq < 0.25:
+                reward = 500.0
+                print("checkpoint Reward goal reached: {}".format(reward))
+                self.hard_reset = True
             return reward, self.done
 
-        else:          
-            linear_velocity_sign = -0.2 if self.linear_velocity < 0 else 0.2
-            #scenario 1
+        else:
+            linear_velocity_sign = -0.5 if self.linear_velocity < 0 else 0.2
             reward = -1 + linear_velocity_sign
-
-            # scenario 2
-            # reward = -self.distance_to_checkpoint[0]*0.1
-            #          -self.distance_to_checkpoint[1]*0.2
-            #          -self.distance_to_checkpoint[2]*0.3
-            #          -self.distance_to_checkpoint[3]*0.4
-            #          -self.distance_to_checkpoint[4]*0.5
-            #          -0.1
-            #          +linear_velocity_sign
-
-            # scenario 3
-            # try to add obstacle penalty on the sparse reward
-            
-            # if min(self.laser_scans) <= 0.25:
-            #     obstacle_penalty = 8 - (1 / (min(self.laser_scans)**2)) * 0.5
-            # else:
-            #     obstacle_penalty = 0.0
-
-            # # obstacle_penalty = - (1 / (min(self.laser_scans)**2)) * 0.05
-            # reward = -1 + linear_velocity_sign + obstacle_penalty
-
+            self.episode_reward += reward
             self.done = False
             self.hard_reset = False
-
         return reward, self.done
+        
 
     def set_random_robot_pose(self):
         pose = self.get_random_pose()
-        pose.position.x = -2.0 #random.uniform(-2, 2)
-        pose.position.y = -0.5
-
+        pose.position.x = random.uniform(-2, -1)
+        pose.position.y = random.uniform(-4.0, 4.0)
         self.set_entity_state_pose('turtlebot3_waffle', pose)
 
     def set_random_goal_pose(self):
@@ -209,20 +183,17 @@ class NavigationTaskEnv(Turtlebot3Environment):
         Generates a random goal pose, and sets this goal pose in the Gazebo env.
         '''
         self.goal_pose = self.get_random_pose()
-        self.set_entity_state_pose('goal_pose', self.goal_pose)
 
     def get_random_pose(self):
         random_pose = Pose()
         yaw = random.uniform(-pi * 2, pi * 2)
-
-        random_pose.position.x = random.uniform(-1, 2) # 2.0 uniform(-0.5, 2)
-        random_pose.position.y = random.uniform(-2, 2) #  -0.5
+        random_pose.position.x =  random.uniform(-4, 4)
+        random_pose.position.y =  random.uniform(-4, 4)
         random_pose.position.z = 0.0
         random_pose.orientation.x = 0.0
         random_pose.orientation.y = 0.0
         random_pose.orientation.z = sin(yaw * 0.5)
         random_pose.orientation.w = cos(yaw * 0.5)
-        
         return random_pose
 
     def sq_distance_to_goal(self):
@@ -248,24 +219,31 @@ class NavigationTaskEnv(Turtlebot3Environment):
             next_checkpointx = self.checkpoints[checkpoint_index+1][0]
             next_checkpointy = self.checkpoints[checkpoint_index+1][1]
         else:
-            next_checkpointx = self.goal_pose.position.x #self.path[self.local_path_index+self.resolution]
-            next_checkpointy = self.goal_pose.position.y
+            if self.local_path_index+self.path_resolution < len(self.path):
+                next_checkpointx = self.path[self.local_path_index+self.path_resolution][0]
+                next_checkpointy = self.path[self.local_path_index+self.path_resolution][1]
+            else:
+                next_checkpointx = self.goal_pose.position.x
+                next_checkpointy = self.goal_pose.position.y 
         
         goal_angle = math.atan2(next_checkpointy - checkpointy,
                                 next_checkpointx - checkpointx)
         heading = goal_angle
 
+        if heading > pi:
+            heading -= 2 * pi
 
-        # checkpoint_x = self.checkpoints[0][0]
-        # checkpoint_y = self.checkpoints[0][1]
-        # goal_angle = math.atan2(checkpoint_y - self.current_pose.position.y,
-        #                         checkpoint_x - self.current_pose.position.x)
+        elif heading < -pi:
+            heading += 2 * pi
 
-        # goal_angle = math.atan2(self.goal_pose.position.y - self.current_pose.position.y,
-        #                         self.goal_pose.position.x - self.current_pose.position.x)
+        return heading
 
-        # current_yaw = self.get_yaw(self.current_pose)
-        # heading = goal_angle - current_yaw
+    def get_checkpoint_heading(self):
+        goal_angle = math.atan2(self.checkpoints[0][1] - self.current_pose.position.y,
+                                self.checkpoints[0][0] - self.current_pose.position.x)
+
+        current_yaw = self.get_yaw(self.current_pose)
+        heading = goal_angle - current_yaw
 
         if heading > pi:
             heading -= 2 * pi
@@ -282,10 +260,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         return yaw
 
     def observation(self):
-        self.get_robot_pose()
-
-        sq_dist = self.sq_distance_to_goal()
-        
+        self.get_robot_pose()        
         states = []
         states.clear()
         for i in range(len(self.laser_scans)):
@@ -307,22 +282,27 @@ class NavigationTaskEnv(Turtlebot3Environment):
         self.publish_checkpoints_marker()
 
         laser_scans = copy.deepcopy(states)
+        laser_scans_tm1 = copy.deepcopy(self.laser_scans_tm1)
         current_x = copy.deepcopy([float(self.current_pose.position.x)])
         current_y = copy.deepcopy([float(self.current_pose.position.y)])
         current_yaw = copy.deepcopy([self.get_yaw(self.current_pose)])
-        current_goal_x = copy.deepcopy([float(self.goal_pose.position.x)])
-        current_goal_y = copy.deepcopy([float(self.goal_pose.position.y)])
+        
+        odom_linear_vel = copy.deepcopy([self.odom_linear_vel])
+        odom_angular_vel = copy.deepcopy([self.odom_angular_vel])
+        
         checkpoints_position = copy.deepcopy(checkpoint)
         obs = np.concatenate([
             laser_scans,
+            laser_scans_tm1,
             current_x,
             current_y,
             current_yaw,
-            current_goal_x,
-            current_goal_y,
+            odom_linear_vel,
+            odom_angular_vel,
             checkpoints_position,
         ])
 
+        self.laser_scans_tm1 = copy.deepcopy(states)
         achieved_goal = copy.deepcopy(np.array([float(self.current_pose.position.x),
                                                 float(self.current_pose.position.y)]))
         desired_goal = copy.deepcopy(np.array([float(self.goal_pose.position.x),
@@ -335,6 +315,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         # }
         return obs
 
+
     def get_checkpoints(self):
         counter = 0
         self.checkpoints.clear()
@@ -346,8 +327,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
                 self.checkpoints[counter] = self.path[self.local_path_index]
                 counter += 1
         while counter < self.num_check_points:
-            if self.local_path_index >= len(self.path):
-                self.local_path_index = len(self.path)-1
+            self.local_path_index = len(self.path)-1
             self.checkpoints[counter] = self.path[self.local_path_index]
             counter += 1
 
@@ -373,8 +353,12 @@ class NavigationTaskEnv(Turtlebot3Environment):
             marker = self.add_marker()
             marker.scale.z = 0.125
             marker.color.g = 0.0
-            marker.color.r = 1.0 * ((i+1)/5)
-            marker.color.b = 1.0 * ((i+1)/5)
+            if i ==0:
+                marker.color.r = 0.0
+                marker.color.b = 1.0
+            else:
+                marker.color.r = 1.0 * ((i+1)/5)
+                marker.color.b = 1.0 * ((i+1)/5)
             marker.id = i
             marker.pose.position.x = self.checkpoints[i][0]
             marker.pose.position.y = self.checkpoints[i][1]
@@ -396,6 +380,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = self.goal_pose.orientation.z
         marker.pose.orientation.w = self.goal_pose.orientation.w
+        marker.type = marker.SPHERE
         marker.text = 'Goal_pose'
         markerArray.markers.append(marker)
 
@@ -442,6 +427,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         Gets a path to the new goal pose from subscriber.
         """
 
+        self.episode_reward = 0.0
         if self.hard_reset:
             self.hard_reset = False
             if self.gazebo_started == False:
@@ -478,7 +464,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
                                float(self.result_path[i].pose.position.y),
                                0.0])
 
-        self.path_resolution = 10
+        self.path_resolution = 20
         if len(self.result_path) <= self.path_resolution * self.num_check_points:
             self.path_resolution = int(len(self.result_path) / self.num_check_points)
             if self.path_resolution == 0:
