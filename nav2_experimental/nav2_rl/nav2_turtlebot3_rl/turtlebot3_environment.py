@@ -80,8 +80,8 @@ class Turtlebot3Environment(GazeboInterface):
 
         self.laser_scans.clear()
         self.laser_scans = []
-        for i in range(self.num_laser_scans):
-            step = int(len(LaserScan.ranges) / self.num_laser_scans)
+        for i in range(self.num_lasers):
+            step = int(len(LaserScan.ranges) / self.num_lasers)
             self.laser_scans.append(self.laser_scan_range[i*step])
             #self.laser_scans.append(min(self.laser_scan_range[i * step:(i + 1) * step],
             #                         default=0))
@@ -140,7 +140,7 @@ class Turtlebot3Environment(GazeboInterface):
         self.scan_msg_received = False
         self.stop_action()
         self.laser_scan_range = [0] * self.num_lasers
-        self.laser_scans = [3.5] * self.num_laser_scans
+        self.laser_scans = [3.5] * self.num_lasers
         while not self.scan_msg_received and rclpy.ok():
             sleep(0.01)
         self.collision = False
