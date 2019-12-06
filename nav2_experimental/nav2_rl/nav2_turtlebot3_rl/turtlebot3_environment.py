@@ -20,8 +20,10 @@ import rclpy
 from rclpy.qos import qos_profile_sensor_data
 
 import parameters
+import numpy as np
 
 from geometry_msgs.msg import Twist, Pose
+from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from gazebo_msgs.srv import GetEntityState
 
@@ -36,18 +38,23 @@ class Turtlebot3Environment(GazeboInterface):
         self.actions = self.get_actions()
 
         self.collision = False
-        self.num_laser_scans = 36
+        self.num_lasers = 72
         self.collision_tol = 0.125
-        self.laser_scan_range = [0] * 360
-        self.laser_scans = [3.5] * self.num_laser_scans
+        self.laser_scan_range = [0] * self.num_lasers
+        self.laser_scans = [3.5] * self.num_lasers
+        self.laser_scans_tm1 = [3.5] * self.num_lasers
         self.zero_div_tol = 0.01
         self.range_min = 0.0
+        self.odom_linear_vel = 0.0
+        self.odom_angular_vel = 0.0
 
         self.current_pose = Pose()
         self.goal_pose = Pose()
 
         self.pub_cmd_vel = self.node_.create_publisher(Twist, 'cmd_vel', 1)
         self.sub_scan = self.node_.create_subscription(LaserScan, '/scan', self.scan_callback,
+                                                       qos_profile_sensor_data)
+        self.odom = self.node_.create_subscription(Odometry, '/odom', self.odom_callback,
                                                        qos_profile_sensor_data)
         self.scan_msg_received = False
         self.writer = SummaryWriter()
@@ -64,6 +71,8 @@ class Turtlebot3Environment(GazeboInterface):
         for i in range(len(LaserScan.ranges)):
             if LaserScan.ranges[i] == float('Inf'):
                 self.laser_scan_range.append(range_max)
+            elif np.isnan(LaserScan.ranges[i]):
+                self.laser_scan_range.append(self.range_min)
             elif LaserScan.ranges[i] < self.range_min + self.collision_tol - 0.05:
                 self.laser_scan_range.append(self.range_min + self.collision_tol)
             else:
@@ -76,6 +85,10 @@ class Turtlebot3Environment(GazeboInterface):
             self.laser_scans.append(self.laser_scan_range[i*step])
             #self.laser_scans.append(min(self.laser_scan_range[i * step:(i + 1) * step],
             #                         default=0))
+
+    def odom_callback(self, Odometry):
+        self.odom_linear_vel = Odometry.twist.twist.linear.x
+        self.odom_angular_vel = Odometry.twist.twist.angular.z
 
     def check_collision(self):
         if min(self.laser_scans) < self.range_min + self.collision_tol:
@@ -120,11 +133,13 @@ class Turtlebot3Environment(GazeboInterface):
         #self.reset_gazebo_simulation()
 
         self.time_factor = self.get_time_factor()
-        self.scan_msg_received = False
+        if self.time_factor == 0:
+            print('Time factor error...')
+            self.reset_tb3_env()
 
+        self.scan_msg_received = False
         self.stop_action()
-        self.num_laser_scans = 36
-        self.laser_scan_range = [0] * 360
+        self.laser_scan_range = [0] * self.num_lasers
         self.laser_scans = [3.5] * self.num_laser_scans
         while not self.scan_msg_received and rclpy.ok():
             sleep(0.01)
@@ -149,25 +164,27 @@ class Turtlebot3Environment(GazeboInterface):
         self.linear_velocity = vel_cmd.linear.x
         self.pub_cmd_vel.publish(vel_cmd)
         sleep(parameters.LOOP_RATE / self.time_factor)
-        self.stop_action()
         get_reward = self.compute_reward()
+        reward = get_reward[0]
 
         # Pause environment
         self.pause_gazebo_world()
 
-        self.reward_sum +=get_reward[0]
         self.max_step += 1
         if self.max_step > 499:
             print('Max steps...')
+            reward = -500.0
             self.hard_reset = True
             self.max_step = 0
             self.done = True
+
+        self.reward_sum +=reward
         if self.done:
             self.episode_tensor += 1
             self.writer.add_scalar('reward_sum',self.reward_sum, self.episode_tensor)
             self.reward_sum = 0.0
-            if self.episode_tensor > 10000:
+            if self.episode_tensor > 80000:
                 self.writer.close()
 
 
-        return self.observation(), get_reward[0], self.done, {}
+        return self.observation(), reward, self.done, {}
