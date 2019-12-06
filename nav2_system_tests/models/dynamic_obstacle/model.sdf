@@ -60,10 +60,10 @@
         <initial_velocity>0 0.05 0</initial_velocity>
         <velocity_factor>0.5</velocity_factor>
         <update_period>3</update_period>
-        <min_x>-0.5</min_x>
-        <max_x>0.5</max_x>
-        <min_y>-0.5</min_y>
-        <max_y>0.5</max_y>
+        <min_x>-0.15</min_x>
+        <max_x>0.15</max_x>
+        <min_y>-0.15</min_y>
+        <max_y>0.15</max_y>
         <min_z>-10</min_z>
         <max_z>-5</max_z>
       </plugin>

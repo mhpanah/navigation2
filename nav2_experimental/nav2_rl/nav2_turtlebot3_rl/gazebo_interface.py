@@ -16,6 +16,7 @@ from core_env import Env
 
 from time import sleep
 from threading import Thread
+from ament_index_python.packages import get_package_share_directory
 
 import rclpy
 from rclpy.node import Node
@@ -52,9 +53,11 @@ class GazeboInterface(Env):
         self.time_factor = 1.0
         self.time_to_sample = 1.0
         self.count = 0
+        nav2_system_tests_dir = get_package_share_directory('nav2_system_tests')
+        self.world_model_path=os.path.join(nav2_system_tests_dir, 'models/room1/world.model')
         self.gazebo_started = False
-        self.gazebo_process = subprocess.Popen(['gzserver', '-s', 'libgazebo_ros_init.so',
-        '/home/mohammad/OTC_workDir/navigation2/nav2_system_tests/worlds/turtlebot3_ros2_demo.world'])
+        self.gazebo_process = subprocess.Popen(['gazebo', '-s', 'libgazebo_ros_init.so', 
+                                                 self.world_model_path])
         self.gazebo_started = True
         #self.tf_broadcaster = TransformBroadcaster(self.node_)
         #self.send_transform()
@@ -137,8 +140,8 @@ class GazeboInterface(Env):
 
     def restart_gazebo(self):
         self.kill_gazebo()
-        self.gazebo_process = subprocess.Popen(['gzserver', '-s', 'libgazebo_ros_init.so',
-        '/home/mohammad/OTC_workDir/navigation2/nav2_system_tests/worlds/turtlebot3_ros2_demo.world'])
+        self.gazebo_process = subprocess.Popen(['gazebo', '-s', 'libgazebo_ros_init.so',
+                                                 self.world_model_path])
         print(self.gazebo_process.pid)
         #self.send_transform()
         self.gazebo_started == True

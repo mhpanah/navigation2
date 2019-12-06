@@ -23,6 +23,8 @@ find_package(navigation2)
 
 nav2_package()
 
+install(DIRECTORY models DESTINATION share/${PROJECT_NAME})
+
 set(dependencies
   rclcpp
   nav2_util
