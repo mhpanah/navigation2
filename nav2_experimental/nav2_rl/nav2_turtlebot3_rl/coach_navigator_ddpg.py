@@ -14,6 +14,7 @@
 
 from navigation_task_env import NavigationTaskEnv
 
+import pickle
 import rclpy
 from rclpy.node import Node
 from time import sleep
@@ -93,9 +94,9 @@ class NavigatorDDPG():
 
         # OrnsteinUhlenbeckProcess parameters
         agent_params.exploration.mu = 0.0
-        agent_params.exploration.theta = 0.15
-        agent_params.exploration.sigma = 0.2
- 
+        agent_params.exploration.theta = 0.03
+        agent_params.exploration.sigma = 0.1
+
         # Actor Model
         agent_params.network_wrappers['actor'].\
             input_embedders_parameters['observation'].scheme = [Dense(400)]
@@ -120,8 +121,13 @@ class NavigatorDDPG():
                                                  schedule_params=schedule_params,
                                                  vis_params=VisualizationParameters())
 
+        #nav2_turtlebot3_rl = get_package_share_directory('nav2_turtlebot3_rl')
+        #self.my_checkpoint_dir = os.path.join(nav2_turtlebot3_rl, 'checkpoints')
         resources_path = '/home/mohammad/OTC_workDir/navigation2/baby_steps'
         self.my_checkpoint_dir = resources_path + '/checkpoints'
+
+        pickle_in = open("coach_memory.pickle", "rb")
+        self.agent_params.memory = pickle.load(pickle_in)
 
     def train_model(self):
         task_parameters1 = TaskParameters()
@@ -136,8 +142,11 @@ class NavigatorDDPG():
 
         # Train
         for episode in range(40000):
-            self.graph_manager.train_and_act(EnvironmentSteps(100))
-            self.graph_manager.heatup(EnvironmentSteps(100))
+            self.graph_manager.train_and_act(EnvironmentSteps(500))
+            #self.graph_manager.heatup(EnvironmentSteps(100))
+            pickle_out = open("coach_memory.pickle", "wb")
+            pickle.dump(self.agent_params.memory, pickle_out)
+            pickle_out.close()
             print("Training episode...:{}".format(episode))
 
     def load_model(self):
