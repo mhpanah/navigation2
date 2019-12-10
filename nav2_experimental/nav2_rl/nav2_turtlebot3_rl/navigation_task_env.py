@@ -45,6 +45,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         self.zero_div_tol = 0.01
         self.range_min = 0.0
         self.current_pose = Pose()
+        self.prev_pose = copy.deepcopy(self.current_pose)
         self.goal_pose = Pose()
 
         self.result_path = None
@@ -60,19 +61,24 @@ class NavigationTaskEnv(Turtlebot3Environment):
         self.reached_point = False
         self.checkpoint_index = 0
         self.hard_reset = True
+        self.soft_reset = False
         self.path_fail_count = 0
         self.local_path_index = 0
         self.num_check_points = 5
         self.checkpoints = [[0.0,0.0,0.0]] * self.num_check_points
         self.distance_to_checkpoint = [0.0, 0.0, 0.0, 0.0, 0.0]
 
-        _high = [3.5]*len(self.laser_scans)
-        _high.extend([pi, 10.0, 10.0])
-        _high.extend([10.0]*self.num_check_points)
+        _high = [3.5]*len(self.laser_scans)*2 #two sets of laser scans
+        _high.extend([10.0, 10.0, pi]) # current x, y, yaw
+        _high.extend([10.0, 10.0, pi]) # prev x, y, yaw
+        _high.extend([0.26, 0.26]) # linear and angular velocity
+        _high.extend([10.0, 10.0, pi]*self.num_check_points)
 
-        _min = [3.5]*len(self.laser_scans)
-        _min.extend([-pi, -10.0, -10.0])
-        _min.extend([-10.0]*self.num_check_points)
+        _min = [0.0]*len(self.laser_scans)*2 #two sets of laser scans
+        _min.extend([-10.0, -10.0, -pi]) # current x, y, yaw
+        _min.extend([-10.0, -10.0, -pi]) # prev x, y, yaw
+        _min.extend([-0.26, -0.26]) # linear and angular velocity
+        _min.extend([-10.0, -10.0, pi]*self.num_check_points)
 
         obs = self.observation()
         # self.observation_space = spaces.Dict(dict(
@@ -136,6 +142,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
 
         reward = 0.0
         goal_dist_sq = self.sq_distance_to_goal()
+        checkpoint_dist_sq = self.sq_distance_to_checkpoint() # distance to the 1st checkpoint
 
         if self.check_collision():
              self.collision = True
@@ -146,13 +153,13 @@ class NavigationTaskEnv(Turtlebot3Environment):
             reward = -500.0
             self.done = True
             self.hard_reset = True
-            print("Collision Reward: {}".format(reward))
+            print("Episode Reward: {}".format(self.episode_reward + reward))
             return reward, self.done
 
         elif self.reached_point:
-            reward = (500.0 * cos(self.get_yaw(self.current_pose)-self.checkpoints[self.checkpoint_index][2]))
-            if reward < 0.0:
-                reward = 0.0
+            # reward = (500.0 * cos(self.get_yaw(self.current_pose)-self.checkpoints[self.checkpoint_index][2]))
+            # if reward < 0.0:
+            #     reward = 0.0
             reward = 500.0
             print("Episode Reward: {}".format(self.episode_reward + reward))
             self.done = True
@@ -164,8 +171,12 @@ class NavigationTaskEnv(Turtlebot3Environment):
             return reward, self.done
 
         else:
+            distance_reward = copy.deepcopy(-(checkpoint_dist_sq))
+            heading_reward = copy.deepcopy(-0.5 * self.get_checkpoint_heading()**2)
+            checkpoint_reward = copy.deepcopy(distance_reward + heading_reward)
+            
             linear_velocity_sign = -0.5 if self.linear_velocity < 0 else 0.2
-            reward = -1 + linear_velocity_sign
+            reward = -1 + linear_velocity_sign # + checkpoint_reward
             self.episode_reward += reward
             self.done = False
             self.hard_reset = False
@@ -176,6 +187,8 @@ class NavigationTaskEnv(Turtlebot3Environment):
         pose = self.get_random_pose()
         pose.position.x = random.uniform(-2, -1)
         pose.position.y = random.uniform(-4.0, 4.0)
+        self.current_pose = copy.deepcopy(pose)
+        self.prev_pose = copy.deepcopy(self.current_pose)
         self.set_entity_state_pose('turtlebot3_waffle', pose)
 
     def set_random_goal_pose(self):
@@ -286,7 +299,11 @@ class NavigationTaskEnv(Turtlebot3Environment):
         current_x = copy.deepcopy([float(self.current_pose.position.x)])
         current_y = copy.deepcopy([float(self.current_pose.position.y)])
         current_yaw = copy.deepcopy([self.get_yaw(self.current_pose)])
-        
+
+        prev_x = copy.deepcopy([float(self.prev_pose.position.x)])
+        prev_y = copy.deepcopy([float(self.prev_pose.position.y)])
+        prev_yaw = copy.deepcopy([self.get_yaw(self.prev_pose)])
+
         odom_linear_vel = copy.deepcopy([self.odom_linear_vel])
         odom_angular_vel = copy.deepcopy([self.odom_angular_vel])
         
@@ -297,10 +314,15 @@ class NavigationTaskEnv(Turtlebot3Environment):
             current_x,
             current_y,
             current_yaw,
+            prev_x,
+            prev_y,
+            prev_yaw,
             odom_linear_vel,
             odom_angular_vel,
             checkpoints_position,
         ])
+
+        self.prev_pose = self.current_pose
 
         self.laser_scans_tm1 = copy.deepcopy(states)
         achieved_goal = copy.deepcopy(np.array([float(self.current_pose.position.x),
@@ -338,12 +360,15 @@ class NavigationTaskEnv(Turtlebot3Environment):
         
     def reached_checkpoint(self):
         
-        for it in range(0, len(self.checkpoints), 1):        
+        for it in range(0, len(self.checkpoints), 1):
+            #diff_rad = self.get_yaw(self.current_pose)-self.checkpoints[it][2]
+            #print(diff_rad)
             dx = self.checkpoints[it][0] - self.current_pose.position.x
             dy = self.checkpoints[it][1] - self.current_pose.position.y
             dist = dx * dx + dy * dy
             self.distance_to_checkpoint[it] = dist
             if dist < 0.0625:
+            #if dist < 0.25 and abs(diff_rad) < pi/4:
                 return [True, it]
         return [False, it]
 
@@ -428,7 +453,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         """
 
         self.episode_reward = 0.0
-        if self.hard_reset:
+        if self.hard_reset or self.soft_reset:
             self.hard_reset = False
             if self.gazebo_started == False:
                 self.restart_gazebo()
@@ -442,12 +467,14 @@ class NavigationTaskEnv(Turtlebot3Environment):
                     self.count = 0
                 self.count = 0
 
-                self.reset_tb3_env()
-                self.set_random_robot_pose()
-                self.set_random_goal_pose()
-                sleep(1.0)
+                if not self.soft_reset:
+                    self.reset_tb3_env()
+                    self.set_random_robot_pose()
+                    self.set_random_goal_pose()
+                    sleep(1.0)
                 self.get_path()
-                
+            #self.prev_pose = self.current_pose
+            self.soft_reset = False
             #self.reset_gazebo_world()
             self.initialize_checkpoints()
             self.hard_reset = False

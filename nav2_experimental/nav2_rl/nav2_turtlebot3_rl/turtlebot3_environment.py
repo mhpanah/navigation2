@@ -174,7 +174,9 @@ class Turtlebot3Environment(GazeboInterface):
         if self.max_step > 499:
             print('Max steps...')
             reward = -500.0
-            self.hard_reset = True
+            print("Episode Reward: {}".format(self.episode_reward + reward))
+            self.soft_reset = True
+            #self.hard_reset = True
             self.max_step = 0
             self.done = True
 
