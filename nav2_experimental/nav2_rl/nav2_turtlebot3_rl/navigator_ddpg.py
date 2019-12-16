@@ -13,7 +13,8 @@
 # limitations under the License.
 
 from navigation_task_env import NavigationTaskEnv
-
+#from navigation_task_env_checkpoint import NavigationTaskEnv
+import pickle
 import rclpy
 from rclpy.node import Node
 from time import sleep
@@ -95,32 +96,40 @@ class NavigatorDDPG():
         self.critic = Model(inputs=[action_input, observation_input], outputs=x)
         print(self.critic.summary())
 
-        memory = SequentialMemory(limit=1000000, window_length=1) #400000
+        memory = SequentialMemory(limit=200000, window_length=1) #400000
 
-        random_process = OrnsteinUhlenbeckProcess(size=nb_actions, theta=.03, mu=0., sigma=.04)
+        #random_process = OrnsteinUhlenbeckProcess(size=nb_actions, theta=.0075, mu=0., sigma=.01)  # 0.03/4   0.04/4
+        random_process = OrnsteinUhlenbeckProcess(size=nb_actions, theta=.03, mu=0., sigma=.1, sigma_min = 0.001, n_steps_annealing=5000000) #dt=0.01, 
 
         self.agent = DDPGAgent(nb_actions=nb_actions,
                                actor=self.actor, critic=self.critic,
                                critic_action_input=action_input,
                                batch_size=16,
                                memory=memory,
-                               nb_steps_warmup_critic=5000,
-                               nb_steps_warmup_actor=5000,
+                               nb_steps_warmup_critic=25000,
+                               nb_steps_warmup_actor=25000,
                                random_process=random_process,
                                gamma=.99,
-                               target_model_update=0.01,
+                               target_model_update=14,
                                train_interval = 1,
                                processor=TB3Processor())
-        
-        self.agent.compile([Adam(lr=1e-4), Adam(lr=1e-3)], metrics=['mae'])
-        # self.agent.load_weights('ddpg_weights.h5f')
+
+        self.agent.compile([Adam(lr=1e-5, epsilon=1e-8, decay=0.01), Adam(lr=1e-4, epsilon=1e-8, decay = 0.01)], metrics=['mae'])
+        #self.agent.load_weights('ddpg_weights.h5f')
+        #pickle_in = open("memory.pickle", "rb")
+        #self.agent.memory = pickle.load(pickle_in)
 
     def train_model(self, env, action_size):
-        # self.agent.load_weights('ddpg_weights.h5f')
+        #self.agent.load_weights('ddpg_weights.h5f')
         for it in range(0, 100000, 1):
-            self.agent.fit(env, nb_steps=60000, visualize=False, verbose=1, nb_max_episode_steps=500)
+            self.agent.fit(env, nb_steps=30000, visualize=False, verbose=1, nb_max_episode_steps=500)
+            self.agent.nb_steps_warmup_critic = 1
+            self.agent.nb_steps_warmup_actor = 1
             self.agent.save_weights('ddpg_weights{}.h5f'.format(it), overwrite=True)
-            self.agent.test(env, nb_episodes=50, visualize=True)
+            pickle_out = open("memory.pickle", "wb")
+            pickle.dump(self.agent.memory, pickle_out)
+            pickle_out.close()
+            self.agent.test(env, nb_episodes=10, visualize=True)
             sleep(1)
             self.agent.load_weights('ddpg_weights{}.h5f'.format(it))
 
@@ -130,9 +139,7 @@ class NavigatorDDPG():
         # self.agent.test(env, nb_episodes=500, visualize=True)
         observation = env.reset()
         for _ in range(5000):
-            action = self.agent.forward(observation)
-            # if self.processor is not None:
-            #     action = self.processor.process_action(action)
+            action = self.agent.forward(observation) * 0.26
             observation, r, done, info = env.step(action)
             if done:
                 observation = env.reset()

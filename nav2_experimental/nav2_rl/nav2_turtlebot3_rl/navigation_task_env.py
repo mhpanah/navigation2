@@ -64,7 +64,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
         self.soft_reset = False
         self.path_fail_count = 0
         self.local_path_index = 0
-        self.num_check_points = 5
+        self.num_check_points = 1#5
         self.checkpoints = [[0.0,0.0,0.0]] * self.num_check_points
         self.distance_to_checkpoint = [0.0, 0.0, 0.0, 0.0, 0.0]
 
@@ -177,6 +177,7 @@ class NavigationTaskEnv(Turtlebot3Environment):
             
             linear_velocity_sign = -0.5 if self.linear_velocity < 0 else 0.2
             reward = -1 + linear_velocity_sign # + checkpoint_reward
+            #reward = distance_reward + heading_reward
             self.episode_reward += reward
             self.done = False
             self.hard_reset = False
