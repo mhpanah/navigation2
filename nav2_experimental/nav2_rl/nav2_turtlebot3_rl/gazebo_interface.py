@@ -56,7 +56,7 @@ class GazeboInterface(Env):
         nav2_system_tests_dir = get_package_share_directory('nav2_system_tests')
         self.world_model_path=os.path.join(nav2_system_tests_dir, 'models/room1/world.model')
         self.gazebo_started = False
-        self.gazebo_process = subprocess.Popen(['gazebo', '-s', 'libgazebo_ros_init.so', 
+        self.gazebo_process = subprocess.Popen(['gzserver', '-s', 'libgazebo_ros_init.so', 
                                                  self.world_model_path])
         self.gazebo_started = True
         #self.tf_broadcaster = TransformBroadcaster(self.node_)
@@ -140,7 +140,7 @@ class GazeboInterface(Env):
 
     def restart_gazebo(self):
         self.kill_gazebo()
-        self.gazebo_process = subprocess.Popen(['gazebo', '-s', 'libgazebo_ros_init.so',
+        self.gazebo_process = subprocess.Popen(['gzserver', '-s', 'libgazebo_ros_init.so',
                                                  self.world_model_path])
         print(self.gazebo_process.pid)
         #self.send_transform()
