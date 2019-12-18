@@ -126,14 +126,12 @@ class NavigatorDDPG():
         resources_path = '/home/mohammad/OTC_workDir/navigation2/baby_steps'
         self.my_checkpoint_dir = resources_path + '/checkpoints'
 
-        pickle_in = open("coach_memory.pickle", "rb")
-        self.agent_params.memory = pickle.load(pickle_in)
 
     def train_model(self):
         task_parameters1 = TaskParameters()
         task_parameters1.checkpoint_save_dir = self.my_checkpoint_dir
         task_parameters1.checkpoint_save_secs = 600 # Seconds
-        # task_parameters1.checkpoint_restore_path = self.my_checkpoint_dir
+        task_parameters1.checkpoint_restore_path = self.my_checkpoint_dir
         self.graph_manager.create_graph(task_parameters1)
 
         # Heatup
@@ -144,9 +142,6 @@ class NavigatorDDPG():
         for episode in range(40000):
             self.graph_manager.train_and_act(EnvironmentSteps(500))
             #self.graph_manager.heatup(EnvironmentSteps(100))
-            pickle_out = open("coach_memory.pickle", "wb")
-            pickle.dump(self.agent_params.memory, pickle_out)
-            pickle_out.close()
             print("Training episode...:{}".format(episode))
 
     def load_model(self):
